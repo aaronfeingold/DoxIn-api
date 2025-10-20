@@ -38,6 +38,7 @@ celery_app.conf.update(
 # Flask app for worker context (lazy initialization)
 _flask_app = None
 
+
 def get_flask_app():
     """Get or create Flask app for worker context"""
     global _flask_app

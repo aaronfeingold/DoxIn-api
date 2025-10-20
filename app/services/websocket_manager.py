@@ -2,7 +2,6 @@
 Simple WebSocket Manager - Handles real-time updates
 Replaces: websocket_service.py, websocket_events.py
 """
-import json
 import time
 from typing import Dict, Any, Optional
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -170,6 +169,7 @@ class WebSocketManager:
 
 _websocket_manager: Optional[WebSocketManager] = None
 
+
 def init_websocket_manager(socketio: SocketIO) -> WebSocketManager:
     """Initialize WebSocket manager"""
     global _websocket_manager
@@ -201,6 +201,7 @@ def init_websocket_manager(socketio: SocketIO) -> WebSocketManager:
         _websocket_manager.handle_join_user_notifications(data)
 
     return _websocket_manager
+
 
 def get_websocket_manager() -> Optional[WebSocketManager]:
     """Get WebSocket manager instance"""

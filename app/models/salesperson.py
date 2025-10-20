@@ -6,6 +6,7 @@ from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
 from .base import BaseModel
 
+
 class Salesperson(BaseModel):
     """Salesperson model"""
     __tablename__ = 'salespersons'
