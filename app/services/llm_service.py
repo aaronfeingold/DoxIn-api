@@ -7,11 +7,9 @@ import time
 import base64
 import re
 from typing import Dict, List, Any, Optional, Callable
-from datetime import datetime
 import openai
 from flask import current_app
-from decimal import Decimal
-from app.utils.response import success_response, error_response, iso_timestamp, log_error, log_info
+from app.utils.response import success_response, error_response, iso_timestamp, log_error
 
 
 class LLMService:
@@ -25,9 +23,12 @@ class LLMService:
         self.confidence_threshold = current_app.config.get('CONFIDENCE_THRESHOLD', 0.75)
 
     # === IMAGE PROCESSING ===
-
-    def extract_invoice_from_image(self, image_data: bytes, filename: str = None,
-                                 progress_callback: Callable = None) -> Dict[str, Any]:
+    def extract_invoice_from_image(
+        self,
+        image_data: bytes,
+        filename: str = None,
+        progress_callback: Callable = None
+    ) -> Dict[str, Any]:
         """Extract structured invoice data from image using GPT-4V"""
         start_time = time.time()
 
@@ -158,9 +159,12 @@ class LLMService:
             }
 
     # === TEXT PROCESSING ===
-
-    def analyze_text(self, text: str, analysis_type: str = "general",
-                    progress_callback: Callable = None) -> Dict[str, Any]:
+    def analyze_text(
+        self,
+        text: str,
+        analysis_type: str = "general",
+        progress_callback: Callable = None
+    ) -> Dict[str, Any]:
         """Analyze text content with LLM"""
         start_time = time.time()
 
@@ -219,9 +223,12 @@ class LLMService:
 
     # === IMAGE GENERATION ===
 
-    def generate_invoice_image(self, business_type: str = "general",
-                             complexity: str = "detailed",
-                             company_name: str = None) -> Dict[str, Any]:
+    def generate_invoice_image(
+        self,
+        business_type: str = "general",
+        complexity: str = "detailed",
+        company_name: str = None,
+    ) -> Dict[str, Any]:
         """Generate example invoice images using DALL-E"""
         start_time = time.time()
 
@@ -356,9 +363,9 @@ Style: Professional, clean, black text on white background, typical business inv
         ]
 
 
-# === SINGLETON PATTERN ===
-
+# Singleton pattern for LLM service
 _llm_service: Optional[LLMService] = None
+
 
 def get_llm_service() -> LLMService:
     """Get singleton LLM service instance"""
