@@ -7,6 +7,7 @@ from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
 from .base import BaseModel
 
+
 class Invoice(BaseModel):
     """Invoice/Sales Order model"""
     __tablename__ = 'invoices'
