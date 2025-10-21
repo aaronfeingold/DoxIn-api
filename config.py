@@ -78,6 +78,7 @@ class Config:
 
     # Background Processing (Optional)
     REDIS_URL = os.environ.get('REDIS_URL')
+    REDIS_SESSION_DB = int(os.environ.get('REDIS_SESSION_DB', 2))
     CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', REDIS_URL)
 
     # Application Metadata
