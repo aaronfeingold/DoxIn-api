@@ -1,8 +1,7 @@
 """
 User authentication models (Better Auth compatible)
 """
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Boolean, DateTime
 from sqlalchemy.orm import relationship
 from .base import BaseModel
 
@@ -22,7 +21,6 @@ class User(BaseModel):
 
     # Relationships (Better Auth tables)
     accounts = relationship("Account", back_populates="user", cascade="all, delete-orphan")
-    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
 
     # Application relationships
     file_storage = relationship("FileStorage", back_populates="user", cascade="all, delete-orphan")
@@ -47,32 +45,3 @@ class User(BaseModel):
         if self.last_login:
             result['last_login'] = self.last_login.isoformat()
         return result
-
-
-class Session(BaseModel):
-    """Session model for Better Auth session management"""
-    __tablename__ = 'session'
-
-    # Override id to use String instead of UUID for Better Auth tokens
-    id = Column(String, primary_key=True)
-
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, index=True)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    token = Column(String, unique=True, nullable=False)
-    ip_address = Column(String)
-    user_agent = Column(String)
-
-    # Relationships
-    user = relationship("User", back_populates="sessions")
-
-    def to_dict(self):
-        """Enhanced to_dict"""
-        result = super().to_dict()
-        if self.expires_at:
-            result['expires_at'] = self.expires_at.isoformat()
-        return result
-
-    def is_valid(self):
-        """Check if session is still valid"""
-        from datetime import datetime
-        return datetime.utcnow() < self.expires_at.replace(tzinfo=None)

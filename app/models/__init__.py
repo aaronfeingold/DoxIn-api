@@ -2,7 +2,7 @@
 SQLAlchemy models for the invoice processing system
 """
 from .base import BaseModel
-from .user import User, Session
+from .user import User
 from .account import Account
 from .verification import Verification
 from .file_storage import FileStorage, FileAccessLog
@@ -25,7 +25,6 @@ from .access_request import AccessRequest
 __all__ = [
     'BaseModel',
     'User',
-    'Session',
     'Account',
     'Verification',
     'FileStorage',
