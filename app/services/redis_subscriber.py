@@ -5,8 +5,6 @@ import json
 import redis
 import threading
 import os
-from flask import current_app
-from app.services.websocket_manager import get_websocket_manager
 
 
 class RedisSubscriber:

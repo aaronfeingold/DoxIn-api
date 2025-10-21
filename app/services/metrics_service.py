@@ -4,9 +4,8 @@ Prometheus metrics service for Flask application
 import time
 import functools
 from flask import request, g
-from prometheus_client import Counter, Histogram, Gauge, Info, CollectorRegistry, multiprocess, generate_latest
+from prometheus_client import Counter, Histogram, Gauge, Info, generate_latest
 from prometheus_client.core import REGISTRY
-from werkzeug.exceptions import HTTPException
 
 # Initialize metrics
 REQUEST_COUNT = Counter(
@@ -77,6 +76,7 @@ APP_INFO = Info(
     'flask_app_info',
     'Flask application information'
 )
+
 
 class MetricsService:
     """Service for managing Prometheus metrics"""
@@ -187,9 +187,11 @@ class MetricsService:
         CELERY_TASKS_WAITING.set(waiting_count)
         CELERY_TASKS_ACTIVE.set(active_count)
 
+
 def metrics_endpoint():
     """Generate Prometheus metrics endpoint response"""
     return generate_latest(REGISTRY)
+
 
 def track_processing_time(job_type):
     """Decorator to track processing time for functions"""
@@ -208,6 +210,7 @@ def track_processing_time(job_type):
                 raise
         return wrapper
     return decorator
+
 
 # Initialize global metrics service instance
 metrics_service = MetricsService()

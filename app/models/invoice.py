@@ -7,6 +7,7 @@ from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
 from .base import BaseModel
 
+
 class Invoice(BaseModel):
     """Invoice/Sales Order model"""
     __tablename__ = 'invoices'
@@ -21,8 +22,13 @@ class Invoice(BaseModel):
     due_date = Column(Date)
     ship_date = Column(Date)
 
-    # User who uploaded this invoice
-    uploaded_by_user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
+    # User who uploaded this invoice - WITH FK CONSTRAINT
+    uploaded_by_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('users.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True
+    )
 
     # Customer relationships
     customer_id = Column(UUID(as_uuid=True), ForeignKey('companies.id'))
@@ -77,7 +83,11 @@ class Invoice(BaseModel):
     content_embedding = Column(Vector(1536))
 
     # Relationships
-    uploaded_by_user = relationship("User")
+    uploaded_by_user = relationship(
+        "User",
+        back_populates="uploaded_invoices",
+        foreign_keys=[uploaded_by_user_id]
+    )
     customer = relationship("Company", back_populates="invoices")
     salesperson = relationship("Salesperson", back_populates="invoices")
     territory = relationship("SalesTerritory", back_populates="invoices")

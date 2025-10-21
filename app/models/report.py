@@ -2,9 +2,10 @@
 Report models for admin analytics and custom reports
 """
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime, func, Integer
+from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Integer
 from sqlalchemy.orm import relationship
 from .base import BaseModel
+
 
 class Report(BaseModel):
     """Generated report model"""

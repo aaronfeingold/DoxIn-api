@@ -5,6 +5,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy import Column, String, Text, DateTime, func
 from .base import BaseModel
 
+
 class AuditLog(BaseModel):
     """Audit trail"""
     __tablename__ = 'audit_log'

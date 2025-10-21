@@ -6,11 +6,17 @@ from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, Inte
 from sqlalchemy.orm import relationship
 from .base import BaseModel
 
+
 class ProcessingJob(BaseModel):
     """Processing jobs for async file processing"""
     __tablename__ = 'processing_jobs'
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('users.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
     file_storage_id = Column(UUID(as_uuid=True), ForeignKey('file_storage.id'))
     job_type = Column(String(100), nullable=False)
     auto_save = Column(Boolean, default=True)
@@ -28,7 +34,11 @@ class ProcessingJob(BaseModel):
 
     # Relationships
     user = relationship("User", back_populates="processing_jobs")
-    file_storage = relationship("FileStorage", foreign_keys="FileStorage.processing_job_id", back_populates="processing_job")
+    file_storage = relationship(
+        "FileStorage",
+        foreign_keys="FileStorage.processing_job_id",
+        back_populates="processing_job"
+    )
 
     def to_dict(self):
         """Enhanced to_dict"""

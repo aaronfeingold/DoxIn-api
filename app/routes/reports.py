@@ -4,12 +4,11 @@ Reports routes for admin analytics and custom reports
 from flask import Blueprint, jsonify, request, send_file, current_app
 from app import db
 from app.models.report import Report, SavedReportTemplate
-from app.models.user import User
 from app.utils.auth import require_auth, admin_required, get_current_user, is_admin
+from app.utils.routes_helpers import get_pagination_params, build_pagination_response
 from app.services.report_service import ReportService
 from sqlalchemy import func
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import datetime
 import os
 
 reports_bp = Blueprint('reports', __name__)
@@ -21,10 +20,11 @@ reports_bp = Blueprint('reports', __name__)
 def list_reports():
     """List all reports with pagination and filtering"""
     try:
-        current_user = get_current_user()
+        page, per_page = get_pagination_params()
+        # Override default per_page for reports (20 instead of 50)
+        if request.args.get('per_page') is None:
+            per_page = min(20, 100)
 
-        page = request.args.get('page', 1, type=int)
-        per_page = min(request.args.get('per_page', 20, type=int), 100)
         report_type = request.args.get('type')
         status = request.args.get('status')
         user_id = request.args.get('user_id')
@@ -63,12 +63,7 @@ def list_reports():
                 'user_id': r.user_id,
                 'error_message': r.error_message
             } for r in reports.items],
-            'pagination': {
-                'page': reports.page,
-                'per_page': reports.per_page,
-                'total': reports.total,
-                'pages': reports.pages
-            },
+            'pagination': build_pagination_response(reports),
             'statistics': {status: count for status, count in stats}
         })
 
@@ -605,10 +600,6 @@ def get_report_files(report_id):
 
         file_dir = os.path.dirname(report.file_path)
         base_filename = os.path.basename(report.file_path)
-
-        # Extract timestamp from filename to find related files
-        # Format: business_sales_analysis_YYYYMMDD_HHMMSS.png
-        parts = base_filename.split('_')
 
         # Look for all files with similar timestamp
         available_files = []

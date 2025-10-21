@@ -6,6 +6,7 @@ from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, func
 from sqlalchemy.orm import relationship
 from .base import BaseModel
 
+
 class UsageAnalytics(BaseModel):
     """Usage tracking for pages and features"""
     __tablename__ = 'usage_analytics'

@@ -4,11 +4,22 @@ Report generation service - ports logic from discovery scripts to work with SQL 
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 from sqlalchemy import func, extract
-from decimal import Decimal
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 import warnings
 warnings.filterwarnings('ignore')
+
+
+def currency_formatter(x, p):
+    """Format numbers as currency"""
+    if abs(x) >= 1e6:
+        return f'${x/1e6:.1f}M'
+    elif abs(x) >= 1e3:
+        return f'${x/1e3:.0f}K'
+    else:
+        return f'${x:.0f}'
 
 
 class ReportService:
@@ -29,20 +40,6 @@ class ReportService:
         Returns:
             dict with file_path, metrics, etc.
         """
-        # Import matplotlib only when generating chart reports
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-        from matplotlib.ticker import FuncFormatter
-
-        def currency_formatter(x, p):
-            """Format numbers as currency"""
-            if abs(x) >= 1e6:
-                return f'${x/1e6:.1f}M'
-            elif abs(x) >= 1e3:
-                return f'${x/1e3:.0f}K'
-            else:
-                return f'${x:.0f}'
-
         from app.models import Invoice, InvoiceLineItem, Product, ProductCategory, ProductSubCategory
 
         # Build query with filters
@@ -195,20 +192,6 @@ class ReportService:
         Returns:
             dict with file_path, metrics, etc.
         """
-        # Import matplotlib only when generating chart reports
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-        from matplotlib.ticker import FuncFormatter
-
-        def currency_formatter(x, p):
-            """Format numbers as currency"""
-            if abs(x) >= 1e6:
-                return f'${x/1e6:.1f}M'
-            elif abs(x) >= 1e3:
-                return f'${x/1e3:.0f}K'
-            else:
-                return f'${x:.0f}'
-
         from app.models import Invoice, User
 
         # Build query with filters
@@ -727,19 +710,6 @@ class ReportService:
         Returns:
             dict with file_path, metrics, and list of generated images
         """
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-        from matplotlib.ticker import FuncFormatter
-
-        def currency_formatter(x, p):
-            """Format numbers as currency"""
-            if abs(x) >= 1e6:
-                return f'${x/1e6:.1f}M'
-            elif abs(x) >= 1e3:
-                return f'${x/1e3:.0f}K'
-            else:
-                return f'${x:.0f}'
-
         from app.models import (
             Invoice, InvoiceLineItem, Product,
             ProductCategory, ProductSubCategory,
@@ -922,17 +892,6 @@ class ReportService:
 
     def _create_operational_insights(self, df, timestamp):
         """Create operational performance insights dashboard"""
-        import matplotlib.pyplot as plt
-        from matplotlib.ticker import FuncFormatter
-
-        def currency_formatter(x, p):
-            if abs(x) >= 1e6:
-                return f'${x/1e6:.1f}M'
-            elif abs(x) >= 1e3:
-                return f'${x/1e3:.0f}K'
-            else:
-                return f'${x:.0f}'
-
         fig, axes = plt.subplots(2, 2, figsize=(20, 16))
         fig.suptitle('Operational Performance & Customer Insights', fontsize=20, fontweight='bold')
 
@@ -1042,18 +1001,6 @@ class ReportService:
         Returns:
             dict with file_path and comprehensive profit metrics
         """
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-        from matplotlib.ticker import FuncFormatter
-
-        def currency_formatter(x, p):
-            if abs(x) >= 1e6:
-                return f'${x/1e6:.1f}M'
-            elif abs(x) >= 1e3:
-                return f'${x/1e3:.0f}K'
-            else:
-                return f'${x:.0f}'
-
         from app.models import (
             Invoice, InvoiceLineItem, Product,
             ProductCategory, ProductSubCategory

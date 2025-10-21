@@ -5,12 +5,17 @@ Uses services as controllers: routes -> services -> models
 import uuid
 from flask import Blueprint, request, jsonify, current_app, g
 from app import db
-from app.models import Invoice, InvoiceLineItem
-from app.utils.auth import require_auth, user_or_admin_required, admin_required
+from app.models import Invoice, InvoiceLineItem, FileStorage, ProcessingJob, User
+from app.utils.auth import require_auth, user_or_admin_required, admin_required, is_admin
+from app.utils.audit import create_audit_log
 from app.utils.response import generate_task_id, iso_timestamp, validate_uuid
+from app.utils.routes_helpers import get_pagination_params, build_pagination_response, handle_db_error
 from app.services.llm_service import get_llm_service
+from app.services import async_processor
+from app.services.async_processor import save_invoice_to_database
 from datetime import datetime, timezone
 from decimal import Decimal
+from sqlalchemy.orm import joinedload
 
 invoices_bp = Blueprint('invoices', __name__)
 
@@ -23,29 +28,36 @@ invoices_bp = Blueprint('invoices', __name__)
 def get_invoices():
     """Get all invoices with pagination and filtering"""
     try:
-        from app.utils.auth import is_admin
-
-        page = request.args.get('page', 1, type=int)
-        per_page = min(request.args.get('per_page', 20, type=int), 100)
+        page, per_page = get_pagination_params()
+        # Override default per_page for invoices (20 instead of 50)
+        if request.args.get('per_page') is None:
+            per_page = min(20, 100)
 
         # Admin can view all or filter by specific user(s)
         view_all = request.args.get('view_all', 'false').lower() == 'true'
         filter_user_id = request.args.get('user_id')  # Legacy: single user
         filter_user_ids = request.args.get('user_ids')  # New: multiple users (comma-separated)
 
-        # Build query with filters
-        query = Invoice.query
+        # Build query with filters - use eager loading for user data
+        query = Invoice.query.options(joinedload(Invoice.uploaded_by_user))
 
         # User filtering logic
         if is_admin():
-            current_app.logger.info(f"[GET-INVOICES] Admin user - view_all={view_all}, filter_user_id={filter_user_id}, filter_user_ids={filter_user_ids}")
+            current_app.logger.info(
+                f"[GET-INVOICES] Admin user - view_all={view_all}, "
+                f"filter_user_id={filter_user_id}, "
+                f"filter_user_ids={filter_user_ids}"
+            )
             # Admin viewing all invoices with optional user filter
             if not view_all and not filter_user_id and not filter_user_ids:
-                # Default: show invoices uploaded by this admin OR with no user (legacy)
-                current_app.logger.info(f"[GET-INVOICES] Applying default admin filter (current user OR NULL)")
+                # Default: show invoices uploaded by this admin OR NULL
+                current_app.logger.info(
+                    "[GET-INVOICES] Applying default admin filter "
+                    "(current user OR NULL)"
+                )
                 query = query.filter(
                     (Invoice.uploaded_by_user_id == g.current_user_id) |
-                    (Invoice.uploaded_by_user_id == None)
+                    (Invoice.uploaded_by_user_id.is_(None))
                 )
             elif filter_user_ids:
                 # Admin filtering by multiple users (new multi-select)
@@ -69,8 +81,8 @@ def get_invoices():
 
                         # Add NULL condition if requested
                         if include_null:
-                            current_app.logger.info(f"[GET-INVOICES] Including NULL/unassigned invoices")
-                            filter_conditions.append(Invoice.uploaded_by_user_id == None)
+                            current_app.logger.info("[GET-INVOICES] Including NULL/unassigned invoices")
+                            filter_conditions.append(Invoice.uploaded_by_user_id.is_(None))
 
                         # Apply combined filter (OR condition)
                         if filter_conditions:
@@ -108,18 +120,29 @@ def get_invoices():
             page=page, per_page=per_page, error_out=False
         )
 
-        current_app.logger.info(f"[GET-INVOICES] Query returned {invoices.total} total invoices, {len(invoices.items)} on this page")
+        current_app.logger.info(
+            f"[GET-INVOICES] Query returned {invoices.total} total "
+            f"invoices, {len(invoices.items)} on this page"
+        )
+
+        # Build invoice list with user data (loaded via eager loading)
+        invoices_with_users = []
+        for invoice in invoices.items:
+            invoice_dict = invoice.to_dict()
+            # Add user info if available (already loaded via joinedload)
+            if invoice.uploaded_by_user:
+                invoice_dict['uploaded_by'] = {
+                    'id': str(invoice.uploaded_by_user.id),
+                    'name': invoice.uploaded_by_user.name,
+                    'email': invoice.uploaded_by_user.email
+                }
+            else:
+                invoice_dict['uploaded_by'] = None
+            invoices_with_users.append(invoice_dict)
 
         return jsonify({
-            'invoices': [invoice.to_dict() for invoice in invoices.items],
-            'pagination': {
-                'page': page,
-                'per_page': per_page,
-                'total': invoices.total,
-                'pages': invoices.pages,
-                'has_next': invoices.has_next,
-                'has_prev': invoices.has_prev
-            },
+            'invoices': invoices_with_users,
+            'pagination': build_pagination_response(invoices),
             'is_admin': is_admin(),
             'current_user_id': str(g.current_user_id)
         })
@@ -135,16 +158,27 @@ def get_invoices():
 def get_invoice(invoice_id):
     """Get single invoice by ID with line items and blob URL"""
     try:
-        from app.models import FileStorage, ProcessingJob
-
         uuid_id = uuid.UUID(invoice_id)
-        invoice = Invoice.query.filter_by(id=uuid_id).first()
+        # Use eager loading for user data
+        invoice = Invoice.query.options(
+            joinedload(Invoice.uploaded_by_user)
+        ).filter_by(id=uuid_id).first()
 
         if not invoice:
             return jsonify({'error': 'Invoice not found'}), 404
 
         # Get invoice data
         invoice_data = invoice.to_dict()
+
+        # Add user info if available (already loaded via joinedload)
+        if invoice.uploaded_by_user:
+            invoice_data['uploaded_by'] = {
+                'id': str(invoice.uploaded_by_user.id),
+                'name': invoice.uploaded_by_user.name,
+                'email': invoice.uploaded_by_user.email
+            }
+        else:
+            invoice_data['uploaded_by'] = None
 
         # Add line items
         invoice_data['line_items'] = [item.to_dict() for item in invoice.line_items]
@@ -234,8 +268,10 @@ def create_invoice():
                 description=item_data['description'],
                 quantity=item_data['quantity'],
                 unit_price=Decimal(str(item_data['unit_price'])),
-                line_total=Decimal(str(item_data.get('line_total',
-                    item_data['quantity'] * item_data['unit_price'])))
+                line_total=Decimal(str(item_data.get(
+                    'line_total',
+                    item_data['quantity'] * item_data['unit_price']
+                )))
             )
             line_item.save()
 
@@ -245,9 +281,7 @@ def create_invoice():
         }), 201
 
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Failed to create invoice: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return handle_db_error(e, str(e))
 
 
 # === Processing Operations ===
@@ -285,7 +319,6 @@ def process_invoice():
         }
 
         # Start async processing (service handles WebSocket streaming)
-        from app.services import async_processor
         task = async_processor.process_invoice_image_async.delay(blob_url, filename, task_id, options)
 
         current_app.logger.info(f"Started invoice processing: task_id={task_id}")
@@ -327,10 +360,6 @@ def process_invoice_batch():
         if not files:
             return jsonify({'error': 'No files provided'}), 400
 
-        from app.models import FileStorage, ProcessingJob
-        from app.services.websocket_manager import get_websocket_manager
-        from flask import g
-
         # Get user from Flask g object (set by @require_auth decorator)
         user_id = g.current_user_id
         current_app.logger.info(f"[PROCESS-BATCH] User ID from g.current_user_id: {user_id}")
@@ -362,7 +391,6 @@ def process_invoice_batch():
             db.session.flush()
 
             # Audit log for file upload
-            from app.utils.audit import create_audit_log
             create_audit_log(
                 table_name='file_storage',
                 record_id=file_storage.id,
@@ -399,7 +427,6 @@ def process_invoice_batch():
         db.session.commit()
 
         # Start async processing for each task
-        from app.services import async_processor
         for task_id in task_ids:
             job = ProcessingJob.query.get(task_id)
             file_storage = FileStorage.query.get(job.file_storage_id)
@@ -410,7 +437,10 @@ def process_invoice_batch():
                 'user_id': str(user_id),
                 'user_email': getattr(g, 'current_user_email', None)
             }
-            current_app.logger.info(f"[PROCESS-BATCH] Processing options for task {task_id}: user_id={processing_options.get('user_id')}")
+            current_app.logger.info(
+                f"[PROCESS-BATCH] Processing options for task {task_id}: "
+                f"user_id={processing_options.get('user_id')}"
+            )
 
             # Start async processing
             async_processor.process_invoice_image_async.delay(
@@ -429,9 +459,7 @@ def process_invoice_batch():
         }), 202
 
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Batch processing failed: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return handle_db_error(e, 'Batch processing failed')
 
 
 @invoices_bp.route('/generate', methods=['POST'])
@@ -491,8 +519,6 @@ def generate_test_invoice():
 def get_processing_status(task_id):
     """Get processing status for a task"""
     try:
-        from app.models import ProcessingJob
-
         # Validate UUID
         if not validate_uuid(task_id):
             return jsonify({'error': 'Invalid task ID format'}), 400
@@ -533,9 +559,6 @@ def get_processing_status(task_id):
 def approve_and_save_invoice(task_id):
     """Approve and save invoice from processing job to database"""
     try:
-        from app.models import ProcessingJob, FileStorage
-        from app.services.async_processor import save_invoice_to_database
-
         # Validate UUID
         if not validate_uuid(task_id):
             return jsonify({'error': 'Invalid task ID format'}), 400
@@ -635,9 +658,7 @@ def approve_and_save_invoice(task_id):
                 raise
 
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Failed to approve invoice: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return handle_db_error(e, 'Failed to approve invoice')
 
 
 @invoices_bp.route('/supported-types', methods=['GET'])
@@ -667,8 +688,6 @@ def get_supported_types():
 def update_invoice(invoice_id):
     """Update invoice and line items"""
     try:
-        from app.utils.auth import is_admin
-
         uuid_id = uuid.UUID(invoice_id)
         invoice = Invoice.query.filter_by(id=uuid_id).first()
 
@@ -701,7 +720,10 @@ def update_invoice(invoice_id):
                     if isinstance(value, str):
                         value = datetime.fromisoformat(value.replace('Z', '+00:00')).date()
                 # Convert decimal strings to Decimal
-                elif field in ['subtotal', 'tax_rate', 'tax_amount', 'freight', 'shipping_handling', 'other_charges', 'total_amount'] and value is not None:
+                elif field in [
+                    'subtotal', 'tax_rate', 'tax_amount', 'freight',
+                    'shipping_handling', 'other_charges', 'total_amount'
+                ] and value is not None:
                     value = Decimal(str(value))
                 setattr(invoice, field, value)
 
@@ -720,8 +742,13 @@ def update_invoice(invoice_id):
                     description=item_data['description'],
                     quantity=item_data['quantity'],
                     unit_price=Decimal(str(item_data['unit_price'])),
-                    unit_price_discount=Decimal(str(item_data.get('unit_price_discount', 0))),
-                    line_total=Decimal(str(item_data.get('line_total', item_data['quantity'] * item_data['unit_price']))),
+                    unit_price_discount=Decimal(
+                        str(item_data.get('unit_price_discount', 0))
+                    ),
+                    line_total=Decimal(str(item_data.get(
+                        'line_total',
+                        item_data['quantity'] * item_data['unit_price']
+                    ))),
                     unit_of_measure=item_data.get('unit_of_measure')
                 )
                 db.session.add(line_item)
@@ -739,12 +766,9 @@ def update_invoice(invoice_id):
         })
 
     except ValueError as e:
-        db.session.rollback()
-        return jsonify({'error': f'Invalid data format: {str(e)}'}), 400
+        return handle_db_error(e, f'Invalid data format: {str(e)}', 400)
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error updating invoice: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return handle_db_error(e, 'Error updating invoice')
 
 
 @invoices_bp.route('/users', methods=['GET'])
@@ -753,16 +777,14 @@ def update_invoice(invoice_id):
 def get_invoice_users():
     """Get all users who have uploaded invoices (admin only)"""
     try:
-        from app.models import User
-
         # Get distinct users who have uploaded invoices
         users = db.session.query(User).join(
             Invoice, Invoice.uploaded_by_user_id == User.id
         ).distinct().all()
 
-        # Check if there are any unassigned invoices (NULL uploaded_by_user_id)
+        # Check if there are any unassigned invoices
         unassigned_count = db.session.query(Invoice).filter(
-            Invoice.uploaded_by_user_id == None
+            Invoice.uploaded_by_user_id.is_(None)
         ).count()
 
         user_list = [

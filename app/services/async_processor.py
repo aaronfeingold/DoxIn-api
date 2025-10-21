@@ -5,14 +5,12 @@ Replaces: background_processor.py (and removes document_processor.py dependency)
 import os
 import uuid
 import time
-import tempfile
 import requests
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from celery import Celery
 from flask import current_app
 from app.services.llm_service import get_llm_service
-from app.services.websocket_manager import get_websocket_manager
 from app.services.redis_event_bridge import get_redis_event_bridge
 from app.models import Invoice, InvoiceLineItem
 from app import db
@@ -143,6 +141,7 @@ def process_invoice_image_async(self, image_data_or_url: str, filename: str, tas
     app = get_flask_app()
     with app.app_context():
         return _process_invoice_image_async_impl(self, image_data_or_url, filename, task_id, options)
+
 
 def _process_invoice_image_async_impl(self, image_data_or_url: str, filename: str, task_id: str, options: Dict[str, Any] = None):
     """Implementation of invoice image processing"""
@@ -296,8 +295,8 @@ def _process_invoice_image_async_impl(self, image_data_or_url: str, filename: st
                 job.status = 'failed'
                 job.error_message = error_message
                 db.session.commit()
-        except:
-            pass
+        except Exception as e:
+            current_app.logger.error(f"Failed to update job status: {str(e)}")
 
         user_id = options.get('user_id') if options else None
         send_task_error_update(task_id, error_message, user_id=user_id, filename=filename)
@@ -315,6 +314,7 @@ def process_text_analysis_async(self, text_content: str, analysis_type: str, tas
     app = get_flask_app()
     with app.app_context():
         return _process_text_analysis_async_impl(self, text_content, analysis_type, task_id, options)
+
 
 def _process_text_analysis_async_impl(self, text_content: str, analysis_type: str, task_id: str, options: Dict[str, Any] = None):
     """Implementation of text analysis processing"""
@@ -366,6 +366,7 @@ def process_webhook_request_async(self, webhook_data: Dict[str, Any], task_id: s
     app = get_flask_app()
     with app.app_context():
         return _process_webhook_request_async_impl(self, webhook_data, task_id)
+
 
 def _process_webhook_request_async_impl(self, webhook_data: Dict[str, Any], task_id: str):
     """Implementation of webhook request processing"""
@@ -428,8 +429,8 @@ def save_invoice_to_database(structured_data: Dict[str, Any], filename: str, con
             # Check if it's the exact same file being reprocessed
             if existing_invoice.original_filename == filename:
                 current_app.logger.warning(
-                    f"Invoice {invoice_number} from file '{filename}' was already processed with ID {existing_invoice.id}. "
-                    "Skipping duplicate file upload."
+                    f"Invoice {invoice_number} from file '{filename}' was already processed with ID "
+                    f"{existing_invoice.id}. Skipping duplicate file upload."
                 )
                 raise ValueError(
                     f"This file '{filename}' has already been processed. "
@@ -461,7 +462,10 @@ def save_invoice_to_database(structured_data: Dict[str, Any], filename: str, con
                 uploaded_by_user_id_value = uuid.UUID(user_id)
         else:
             uploaded_by_user_id_value = None
-        current_app.logger.info(f"[SAVE-INVOICE] Creating invoice - user_id={user_id}, uploaded_by_user_id={uploaded_by_user_id_value}")
+        current_app.logger.info(
+            f"[SAVE-INVOICE] Creating invoice - user_id={user_id}, "
+            f"uploaded_by_user_id={uploaded_by_user_id_value}"
+        )
         invoice = Invoice(
             sales_order_id=sales_order_id,
             invoice_number=invoice_number,

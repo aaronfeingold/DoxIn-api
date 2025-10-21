@@ -6,11 +6,17 @@ from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, BigI
 from sqlalchemy.orm import relationship
 from .base import BaseModel
 
+
 class FileStorage(BaseModel):
     """File storage metadata for Vercel Blob"""
     __tablename__ = 'file_storage'
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('users.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
     blob_url = Column(Text, nullable=False)
     blob_path = Column(Text, nullable=False)
     file_name = Column(String(500), nullable=False)
@@ -40,7 +46,12 @@ class FileAccessLog(BaseModel):
     """File access audit log"""
     __tablename__ = 'file_access_log'
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('users.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
     file_name = Column(String(500), nullable=False)
     action = Column(String(50), nullable=False)
     ip_address = Column(String(45))  # IPv6 max length

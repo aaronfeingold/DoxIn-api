@@ -6,6 +6,7 @@ from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
 from .base import BaseModel
 
+
 class ProductCategory(BaseModel):
     """Product category model"""
     __tablename__ = 'product_categories'

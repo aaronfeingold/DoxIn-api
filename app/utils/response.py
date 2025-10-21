@@ -4,7 +4,7 @@ Standardizes API response patterns across services
 """
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 from flask import current_app
 
 

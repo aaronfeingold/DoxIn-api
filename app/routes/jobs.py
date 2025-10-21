@@ -6,8 +6,9 @@ from app import db
 from app.models.processing_job import ProcessingJob
 from app.models.file_storage import FileStorage
 from app.utils.auth import require_auth, user_or_admin_required
+from app.utils.routes_helpers import get_pagination_params, build_pagination_response, handle_db_error
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import func, or_, and_
+from sqlalchemy import func, and_
 
 jobs_bp = Blueprint('jobs', __name__)
 
@@ -19,8 +20,7 @@ def get_my_jobs():
     """Get all jobs for the current user with pagination and filtering"""
     try:
         user_id = g.current_user_id
-        page = request.args.get('page', 1, type=int)
-        per_page = min(request.args.get('per_page', 50, type=int), 100)
+        page, per_page = get_pagination_params()
         status_filter = request.args.get('status')
 
         # Build query filtered by user_id
@@ -32,7 +32,7 @@ def get_my_jobs():
                 query = query.filter(
                     and_(
                         ProcessingJob.status == 'completed',
-                        ProcessingJob.result_data['requires_review'].astext.cast(db.Boolean) == True
+                        ProcessingJob.result_data['requires_review'].astext.cast(db.Boolean).is_(True)
                     )
                 )
             else:
@@ -71,14 +71,7 @@ def get_my_jobs():
 
         return jsonify({
             'jobs': [job.to_dict() for job in jobs.items],
-            'pagination': {
-                'page': page,
-                'per_page': per_page,
-                'total': jobs.total,
-                'pages': jobs.pages,
-                'has_next': jobs.has_next,
-                'has_prev': jobs.has_prev
-            },
+            'pagination': build_pagination_response(jobs),
             'statistics': {
                 'total_jobs': jobs.total,
                 'recent_jobs_24h': recent_jobs,
@@ -232,9 +225,4 @@ def mark_jobs_as_read():
         current_app.logger.error(f"Error type: {type(e).__name__}")
         current_app.logger.error(f"Error args: {e.args}")
         current_app.logger.exception(e)
-        db.session.rollback()
-        return jsonify({
-            'error': 'Failed to mark jobs as read',
-            'details': str(e),
-            'type': type(e).__name__
-        }), 500
+        return handle_db_error(e, 'Failed to mark jobs as read')
