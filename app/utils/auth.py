@@ -89,6 +89,7 @@ def validate_better_auth_session(session_token, track_login=False):
             raise AuthError('Invalid session data')
 
         # Load user from database
+        # TODO: We don't need to load the user from the database here, we can just use the session data
         user = User.query.get(user_id)
 
         if not user:
