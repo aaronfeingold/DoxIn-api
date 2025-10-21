@@ -3,12 +3,12 @@ Health check routes
 """
 from flask import Blueprint, jsonify, Response
 from app import db
+from app.utils.routes_helpers import get_redis_connection
 from sqlalchemy import text
 from app.services.metrics_service import metrics_endpoint, MetricsService
-import redis
-import os
 
 health_bp = Blueprint('health', __name__)
+
 
 @health_bp.route('/', methods=['GET'])
 def health_check():
@@ -18,6 +18,7 @@ def health_check():
         'service': 'case-study-invoice-extraction',
         'version': '1.0.0'
     })
+
 
 @health_bp.route('/database', methods=['GET'])
 def database_health():
@@ -37,6 +38,7 @@ def database_health():
             'database': 'disconnected',
             'error': str(e)
         }), 503
+
 
 @health_bp.route('/detailed', methods=['GET'])
 def detailed_health():
@@ -83,13 +85,15 @@ def detailed_health():
 
     # Check Redis connection
     try:
-        redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-        r = redis.from_url(redis_url)
-        r.ping()
-        health_status['components']['redis'] = {
-            'status': 'healthy',
-            'message': 'Connected'
-        }
+        r = get_redis_connection()
+        if r:
+            r.ping()
+            health_status['components']['redis'] = {
+                'status': 'healthy',
+                'message': 'Connected'
+            }
+        else:
+            raise Exception("Could not establish Redis connection")
     except Exception as e:
         health_status['components']['redis'] = {
             'status': 'unhealthy',
@@ -104,7 +108,7 @@ def detailed_health():
         if hasattr(pool, 'checkedout'):
             active_connections = pool.checkedout()
             MetricsService.update_database_connections(active_connections)
-    except:
+    except Exception:
         pass  # Skip if connection pooling info not available
 
     if not overall_healthy:
@@ -112,6 +116,7 @@ def detailed_health():
         return jsonify(health_status), 503
 
     return jsonify(health_status)
+
 
 @health_bp.route('/metrics', methods=['GET'])
 def prometheus_metrics():
