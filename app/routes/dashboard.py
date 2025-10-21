@@ -5,8 +5,8 @@ from flask import Blueprint, jsonify, current_app, g
 from app import db
 from app.models import Invoice, ProcessingJob
 from app.utils.auth import require_auth, user_or_admin_required, is_admin
-from datetime import datetime, timezone, timedelta
-from sqlalchemy import func, and_
+from datetime import datetime, timezone
+from sqlalchemy import and_
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
@@ -47,8 +47,8 @@ def get_dashboard_stats():
             pending_review = ProcessingJob.query.filter(
                 and_(
                     ProcessingJob.status == 'completed',
-                    ProcessingJob.result_data['requires_review'].astext.cast(db.Boolean) == True,
-                    ProcessingJob.result_data['auto_saved'].astext.cast(db.Boolean) != True
+                    ProcessingJob.result_data['requires_review'].astext.cast(db.Boolean),
+                    ~ProcessingJob.result_data['auto_saved'].astext.cast(db.Boolean)
                 )
             ).count()
         else:
@@ -56,8 +56,8 @@ def get_dashboard_stats():
                 and_(
                     ProcessingJob.user_id == user_id,
                     ProcessingJob.status == 'completed',
-                    ProcessingJob.result_data['requires_review'].astext.cast(db.Boolean) == True,
-                    ProcessingJob.result_data['auto_saved'].astext.cast(db.Boolean) != True
+                    ProcessingJob.result_data['requires_review'].astext.cast(db.Boolean),
+                    ~ProcessingJob.result_data['auto_saved'].astext.cast(db.Boolean)
                 )
             ).count()
 
