@@ -297,8 +297,8 @@ def _process_invoice_image_async_impl(self, image_data_or_url: str, filename: st
                 job.status = 'failed'
                 job.error_message = error_message
                 db.session.commit()
-        except:
-            pass
+        except Exception as e:
+            current_app.logger.error(f"Failed to update job status: {str(e)}")
 
         user_id = options.get('user_id') if options else None
         send_task_error_update(task_id, error_message, user_id=user_id, filename=filename)
