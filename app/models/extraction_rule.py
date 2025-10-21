@@ -5,6 +5,7 @@ from sqlalchemy import Column, String, Boolean, Text, Integer, DECIMAL
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from .base import BaseModel
 
+
 class ExtractionRule(BaseModel):
     """LLM extraction rules"""
     __tablename__ = 'extraction_rules'
