@@ -7,6 +7,7 @@ from app.models.user import User
 from app.models.usage_analytics import UsageAnalytics
 from app.utils.auth import require_auth
 from app.utils.audit import create_audit_log
+from app.utils.jwt_utils import create_jwt_token
 from datetime import datetime
 
 auth_bp = Blueprint('auth', __name__)
@@ -100,3 +101,19 @@ def get_session_info():
         current_app.logger.error(f"Error fetching session info: {str(e)}")
         return jsonify({'error': 'Failed to fetch session info'}), 500
 
+
+@auth_bp.route('/jwt-token', methods=['POST'])
+@require_auth
+def get_jwt_token():
+    """
+    Issue a short-lived JWT for the authenticated Better Auth session.
+    """
+    try:
+        user_id = g.current_user_id
+        user_role = g.current_user_role
+        token, expires_at = create_jwt_token(user_id, user_role)
+        current_app.logger.info(f"Issued JWT for user {user_id}, expires at {expires_at}")
+        return jsonify({"token": token, "expires_at": expires_at}), 200
+    except Exception as e:
+        current_app.logger.error(f"Failed to issue JWT: {str(e)}")
+        return jsonify({'error': 'Failed to issue JWT'}), 500
