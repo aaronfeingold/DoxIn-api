@@ -5,10 +5,13 @@ Uses services as controllers: routes -> services -> models
 import uuid
 from flask import Blueprint, request, jsonify, current_app, g
 from app import db
-from app.models import Invoice, InvoiceLineItem
-from app.utils.auth import require_auth, user_or_admin_required, admin_required
+from app.models import Invoice, InvoiceLineItem, FileStorage, ProcessingJob, User
+from app.utils.auth import require_auth, user_or_admin_required, admin_required, is_admin
+from app.utils.audit import create_audit_log
 from app.utils.response import generate_task_id, iso_timestamp, validate_uuid
 from app.services.llm_service import get_llm_service
+from app.services import async_processor
+from app.services.async_processor import save_invoice_to_database
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -23,8 +26,6 @@ invoices_bp = Blueprint('invoices', __name__)
 def get_invoices():
     """Get all invoices with pagination and filtering"""
     try:
-        from app.utils.auth import is_admin
-
         page = request.args.get('page', 1, type=int)
         per_page = min(request.args.get('per_page', 20, type=int), 100)
 
@@ -135,8 +136,6 @@ def get_invoices():
 def get_invoice(invoice_id):
     """Get single invoice by ID with line items and blob URL"""
     try:
-        from app.models import FileStorage, ProcessingJob
-
         uuid_id = uuid.UUID(invoice_id)
         invoice = Invoice.query.filter_by(id=uuid_id).first()
 
@@ -285,7 +284,6 @@ def process_invoice():
         }
 
         # Start async processing (service handles WebSocket streaming)
-        from app.services import async_processor
         task = async_processor.process_invoice_image_async.delay(blob_url, filename, task_id, options)
 
         current_app.logger.info(f"Started invoice processing: task_id={task_id}")
@@ -327,10 +325,6 @@ def process_invoice_batch():
         if not files:
             return jsonify({'error': 'No files provided'}), 400
 
-        from app.models import FileStorage, ProcessingJob
-        from app.services.websocket_manager import get_websocket_manager
-        from flask import g
-
         # Get user from Flask g object (set by @require_auth decorator)
         user_id = g.current_user_id
         current_app.logger.info(f"[PROCESS-BATCH] User ID from g.current_user_id: {user_id}")
@@ -362,7 +356,6 @@ def process_invoice_batch():
             db.session.flush()
 
             # Audit log for file upload
-            from app.utils.audit import create_audit_log
             create_audit_log(
                 table_name='file_storage',
                 record_id=file_storage.id,
@@ -399,7 +392,6 @@ def process_invoice_batch():
         db.session.commit()
 
         # Start async processing for each task
-        from app.services import async_processor
         for task_id in task_ids:
             job = ProcessingJob.query.get(task_id)
             file_storage = FileStorage.query.get(job.file_storage_id)
@@ -491,8 +483,6 @@ def generate_test_invoice():
 def get_processing_status(task_id):
     """Get processing status for a task"""
     try:
-        from app.models import ProcessingJob
-
         # Validate UUID
         if not validate_uuid(task_id):
             return jsonify({'error': 'Invalid task ID format'}), 400
@@ -533,9 +523,6 @@ def get_processing_status(task_id):
 def approve_and_save_invoice(task_id):
     """Approve and save invoice from processing job to database"""
     try:
-        from app.models import ProcessingJob, FileStorage
-        from app.services.async_processor import save_invoice_to_database
-
         # Validate UUID
         if not validate_uuid(task_id):
             return jsonify({'error': 'Invalid task ID format'}), 400
@@ -667,8 +654,6 @@ def get_supported_types():
 def update_invoice(invoice_id):
     """Update invoice and line items"""
     try:
-        from app.utils.auth import is_admin
-
         uuid_id = uuid.UUID(invoice_id)
         invoice = Invoice.query.filter_by(id=uuid_id).first()
 
@@ -753,8 +738,6 @@ def update_invoice(invoice_id):
 def get_invoice_users():
     """Get all users who have uploaded invoices (admin only)"""
     try:
-        from app.models import User
-
         # Get distinct users who have uploaded invoices
         users = db.session.query(User).join(
             Invoice, Invoice.uploaded_by_user_id == User.id
