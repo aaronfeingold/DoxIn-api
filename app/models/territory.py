@@ -5,6 +5,7 @@ from sqlalchemy import Column, String, Integer, Boolean
 from sqlalchemy.orm import relationship
 from .base import BaseModel
 
+
 class SalesTerritory(BaseModel):
     """Sales territory model"""
     __tablename__ = 'sales_territories'
