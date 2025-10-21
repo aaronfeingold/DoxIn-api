@@ -23,6 +23,11 @@ class User(BaseModel):
     accounts = relationship("Account", back_populates="user", cascade="all, delete-orphan")
 
     # Application relationships
+    uploaded_invoices = relationship(
+        "Invoice",
+        back_populates="uploaded_by_user",
+        foreign_keys="Invoice.uploaded_by_user_id"
+    )
     file_storage = relationship("FileStorage", back_populates="user", cascade="all, delete-orphan")
     processing_jobs = relationship("ProcessingJob", back_populates="user", cascade="all, delete-orphan")
     file_access_log = relationship("FileAccessLog", back_populates="user", cascade="all, delete-orphan")
