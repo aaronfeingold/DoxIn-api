@@ -2,9 +2,9 @@
 Admin monitoring routes for system health and job status
 """
 from flask import Blueprint, jsonify, current_app, request
-from app.utils.auth import require_auth, admin_required, get_current_user
+from app.utils.auth import require_auth, admin_required
 from app import db
-from app.models import ProcessingJob, Invoice
+from app.models import ProcessingJob
 from app.models.file_storage import FileStorage
 from sqlalchemy import text, func
 from sqlalchemy.exc import SQLAlchemyError
@@ -12,9 +12,9 @@ from datetime import datetime, timedelta
 import redis
 import os
 import psutil
-import requests
 
 admin_bp = Blueprint('admin', __name__)
+
 
 def get_redis_connection():
     """Get Redis connection for monitoring"""
@@ -24,6 +24,7 @@ def get_redis_connection():
     except Exception as e:
         current_app.logger.error(f"Redis connection error: {str(e)}")
         return None
+
 
 @admin_bp.route('/health', methods=['GET'])
 def admin_health_check():
@@ -151,6 +152,7 @@ def admin_health_check():
 
     return jsonify(health_status)
 
+
 @admin_bp.route('/jobs', methods=['GET'])
 def get_processing_jobs():
     """Get all processing jobs with status and metrics"""
@@ -205,6 +207,7 @@ def get_processing_jobs():
         current_app.logger.error(f"Error fetching processing jobs: {str(e)}")
         return jsonify({'error': 'Failed to fetch processing jobs'}), 500
 
+
 @admin_bp.route('/jobs/<job_id>', methods=['GET'])
 def get_processing_job_details(job_id):
     """Get detailed information about a specific processing job"""
@@ -238,6 +241,7 @@ def get_processing_job_details(job_id):
     except Exception as e:
         current_app.logger.error(f"Error fetching job details: {str(e)}")
         return jsonify({'error': 'Failed to fetch job details'}), 500
+
 
 @admin_bp.route('/metrics', methods=['GET'])
 def get_system_metrics():
@@ -342,6 +346,7 @@ def get_system_metrics():
         current_app.logger.error(f"Error fetching system metrics: {str(e)}")
         return jsonify({'error': 'Failed to fetch system metrics'}), 500
 
+
 @admin_bp.route('/containers', methods=['GET'])
 def get_container_status():
     """Get Docker container status (if running in Docker)"""
@@ -390,6 +395,7 @@ def get_container_status():
     except Exception as e:
         current_app.logger.error(f"Error fetching container status: {str(e)}")
         return jsonify({'error': 'Failed to fetch container status'}), 500
+
 
 @admin_bp.route('/metrics/refresh', methods=['POST'])
 def refresh_metrics():
@@ -1062,8 +1068,7 @@ def get_audit_log():
 @admin_required
 def get_usage_analytics():
     """Get usage analytics data"""
-    from app.models.usage_analytics import UsageAnalytics, PageViewSummary
-
+    from app.models.usage_analytics import UsageAnalytics
 
     try:
         # Get date range
