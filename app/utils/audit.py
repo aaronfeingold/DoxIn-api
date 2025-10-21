@@ -4,7 +4,7 @@ Audit logging utilities for comprehensive database operation tracking
 from flask import g, has_request_context
 from app import db
 from app.models.audit_log import AuditLog
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 
 def create_audit_log(
