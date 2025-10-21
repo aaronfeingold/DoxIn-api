@@ -144,6 +144,7 @@ def process_invoice_image_async(self, image_data_or_url: str, filename: str, tas
     with app.app_context():
         return _process_invoice_image_async_impl(self, image_data_or_url, filename, task_id, options)
 
+
 def _process_invoice_image_async_impl(self, image_data_or_url: str, filename: str, task_id: str, options: Dict[str, Any] = None):
     """Implementation of invoice image processing"""
     llm_service = get_llm_service()
