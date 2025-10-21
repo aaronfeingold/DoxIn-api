@@ -2,27 +2,46 @@
 Admin monitoring routes for system health and job status
 """
 from flask import Blueprint, jsonify, current_app, request
-from app.utils.auth import require_auth, admin_required
+from app.utils.auth import require_auth, admin_required, get_current_user
+from app.utils.routes_helpers import (
+    get_redis_connection,
+    get_pagination_params,
+    build_pagination_response,
+    handle_db_error
+)
 from app import db
 from app.models import ProcessingJob
 from app.models.file_storage import FileStorage
+from app.models.user import User
+from app.models.invoice import Invoice, InvoiceLineItem
+from app.models.audit_log import AuditLog
+from app.models.usage_analytics import UsageAnalytics
+from app.models.access_code import AccessCode
 from sqlalchemy import text, func
 from datetime import datetime, timedelta
-import redis
 import os
 import psutil
+import secrets
+import string
 
 admin_bp = Blueprint('admin', __name__)
 
 
-def get_redis_connection():
-    """Get Redis connection for monitoring"""
-    try:
-        redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-        return redis.from_url(redis_url)
-    except Exception as e:
-        current_app.logger.error(f"Redis connection error: {str(e)}")
-        return None
+def create_audit_log(table_name, record_id, action, changed_by, old_values=None,
+                     new_values=None, changed_fields=None, change_reason=None):
+    """Create and add an audit log entry to the session"""
+    audit = AuditLog(
+        table_name=table_name,
+        record_id=record_id,
+        action=action,
+        old_values=old_values,
+        new_values=new_values,
+        changed_fields=changed_fields,
+        changed_by=changed_by,
+        change_reason=change_reason
+    )
+    db.session.add(audit)
+    return audit
 
 
 @admin_bp.route('/health', methods=['GET'])
@@ -160,13 +179,11 @@ def admin_health_check():
 def get_processing_jobs():
     """Get all processing jobs with status and metrics"""
     try:
-        page = request.args.get('page', 1, type=int)
-        per_page = min(request.args.get('per_page', 50, type=int), 100)
+        page, per_page = get_pagination_params()
         status_filter = request.args.get('status')
 
         # Build query
         query = ProcessingJob.query
-
         if status_filter:
             query = query.filter(ProcessingJob.status == status_filter)
 
@@ -189,20 +206,11 @@ def get_processing_jobs():
 
         return jsonify({
             'jobs': [job.to_dict() for job in jobs.items],
-            'pagination': {
-                'page': page,
-                'per_page': per_page,
-                'total': jobs.total,
-                'pages': jobs.pages,
-                'has_next': jobs.has_next,
-                'has_prev': jobs.has_prev
-            },
+            'pagination': build_pagination_response(jobs),
             'statistics': {
                 'total_jobs': jobs.total,
                 'recent_jobs_24h': recent_jobs,
-                'status_breakdown': {
-                    status: count for status, count in stats
-                }
+                'status_breakdown': {status: count for status, count in stats}
             }
         })
 
@@ -255,7 +263,6 @@ def get_system_metrics():
     """Get system performance metrics"""
     try:
         # Update Prometheus metrics before fetching
-        from app.models.processing_job import ProcessingJob
         ProcessingJob.update_active_job_metrics()
         # Database metrics
         db_metrics = {}
@@ -412,7 +419,6 @@ def get_container_status():
 def refresh_metrics():
     """Manually refresh all Prometheus metrics"""
     try:
-        from app.models.processing_job import ProcessingJob
         from app.services.metrics_service import MetricsService
 
         # Update processing job metrics
@@ -457,13 +463,13 @@ def refresh_metrics():
         current_app.logger.error(f"Error refreshing metrics: {str(e)}")
         return jsonify({'error': 'Failed to refresh metrics'}), 500
 
+
 @admin_bp.route('/alerts/webhook', methods=['POST'])
 @require_auth
 @admin_required
 def handle_alert_webhook():
     """Handle AlertManager webhook notifications"""
     try:
-        from flask import request
         alert_data = request.get_json()
 
         # Log the alert for now (can be enhanced to store in DB or forward to external systems)
@@ -488,18 +494,14 @@ def handle_alert_webhook():
 # USER MANAGEMENT ENDPOINTS
 # ========================================
 
+
 @admin_bp.route('/users', methods=['GET'])
 @require_auth
 @admin_required
 def get_all_users():
     """Get all users with pagination and filtering"""
-    from flask import request
-    from app.models.user import User
-
-
     try:
-        page = request.args.get('page', 1, type=int)
-        per_page = min(request.args.get('per_page', 50, type=int), 100)
+        page, per_page = get_pagination_params()
         role_filter = request.args.get('role')
         active_filter = request.args.get('active')
         search = request.args.get('search', '').strip()
@@ -530,19 +532,12 @@ def get_all_users():
 
         # Get user statistics
         total_users = User.query.count()
-        active_users = User.query.filter(User.is_active == True).count()
+        active_users = User.query.filter(User.is_active.is_(True)).count()
         admin_users = User.query.filter(User.role == 'admin').count()
 
         return jsonify({
             'users': [user.to_dict() for user in users.items],
-            'pagination': {
-                'page': page,
-                'per_page': per_page,
-                'total': users.total,
-                'pages': users.pages,
-                'has_next': users.has_next,
-                'has_prev': users.has_prev
-            },
+            'pagination': build_pagination_response(users),
             'statistics': {
                 'total_users': total_users,
                 'active_users': active_users,
@@ -555,14 +550,12 @@ def get_all_users():
         current_app.logger.error(f"Error fetching users: {str(e)}")
         return jsonify({'error': 'Failed to fetch users'}), 500
 
+
 @admin_bp.route('/users/<user_id>', methods=['GET'])
 @require_auth
 @admin_required
 def get_user_details(user_id):
     """Get detailed information about a specific user"""
-    from app.models.user import User
-
-
     try:
         user = User.query.get_or_404(user_id)
 
@@ -591,15 +584,12 @@ def get_user_details(user_id):
         current_app.logger.error(f"Error fetching user details: {str(e)}")
         return jsonify({'error': 'Failed to fetch user details'}), 500
 
+
 @admin_bp.route('/users/<user_id>/status', methods=['PATCH'])
 @require_auth
 @admin_required
 def update_user_status(user_id):
     """Activate or deactivate a user account"""
-    from flask import request
-    from app.models.user import User
-
-
     try:
         user = User.query.get_or_404(user_id)
         data = request.get_json()
@@ -623,19 +613,14 @@ def update_user_status(user_id):
         })
 
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error updating user status: {str(e)}")
-        return jsonify({'error': 'Failed to update user status'}), 500
+        return handle_db_error(e, 'Failed to update user status')
+
 
 @admin_bp.route('/users/<user_id>/role', methods=['PATCH'])
 @require_auth
 @admin_required
 def update_user_role(user_id):
     """Update a user's role"""
-    from flask import request
-    from app.models.user import User
-
-
     try:
         user = User.query.get_or_404(user_id)
         data = request.get_json()
@@ -663,33 +648,24 @@ def update_user_role(user_id):
         })
 
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error updating user role: {str(e)}")
-        return jsonify({'error': 'Failed to update user role'}), 500
+        return handle_db_error(e, 'Failed to update user role')
+
 
 @admin_bp.route('/access-codes', methods=['POST'])
 @require_auth
 @admin_required
 def generate_access_code():
     """Generate a new access code for user invitation"""
-    from flask import request
-    from app.models.access_code import AccessCode
-    from datetime import datetime, timedelta
-    import secrets
-    import string
-
     try:
-        data = request.get_json() or {}
-
         # Generate secure 12-character access code
         code_length = 12
         access_code = ''.join(secrets.choice(string.ascii_uppercase + string.digits)
-                            for _ in range(code_length))
+                              for _ in range(code_length))
 
         # Check if code already exists (very unlikely but possible)
         while AccessCode.query.filter_by(code=access_code).first():
             access_code = ''.join(secrets.choice(string.ascii_uppercase + string.digits)
-                                for _ in range(code_length))
+                                  for _ in range(code_length))
 
         # Set expiration to 24 hours from now
         expiry_hours = 24
@@ -716,16 +692,12 @@ def generate_access_code():
         }), 201
 
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error generating access code: {str(e)}")
-        return jsonify({'error': 'Failed to generate access code'}), 500
+        return handle_db_error(e, 'Failed to generate access code')
+
 
 @admin_bp.route('/access-codes/validate', methods=['POST'])
 def validate_access_code():
     """Validate an access code for user signup"""
-    from flask import request
-    from app.models.user import User
-
     try:
         data = request.get_json()
         access_code = data.get('access_code')
@@ -765,9 +737,6 @@ def validate_access_code():
 @admin_required
 def create_invoice():
     """Create a new invoice"""
-    from app.models.invoice import Invoice, InvoiceLineItem
-    from app.models.audit_log import AuditLog
-    from app.utils.auth import get_current_user
     current_user = get_current_user()
 
     try:
@@ -827,7 +796,7 @@ def create_invoice():
                 db.session.add(line_item)
 
         # Create audit log
-        audit = AuditLog(
+        create_audit_log(
             table_name='invoices',
             record_id=invoice.id,
             action='create',
@@ -835,7 +804,6 @@ def create_invoice():
             changed_by=current_user.email,
             change_reason=data.get('change_reason', 'Admin invoice creation')
         )
-        db.session.add(audit)
 
         db.session.commit()
 
@@ -845,9 +813,7 @@ def create_invoice():
         }), 201
 
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error creating invoice: {str(e)}")
-        return jsonify({'error': 'Failed to create invoice'}), 500
+        return handle_db_error(e, 'Failed to create invoice')
 
 
 @admin_bp.route('/invoices/<invoice_id>', methods=['PUT'])
@@ -855,9 +821,6 @@ def create_invoice():
 @admin_required
 def update_invoice(invoice_id):
     """Update an existing invoice"""
-    from app.models.invoice import Invoice
-    from app.models.audit_log import AuditLog
-    from app.utils.auth import get_current_user
     current_user = get_current_user()
 
     try:
@@ -883,7 +846,7 @@ def update_invoice(invoice_id):
 
         if changed_fields:
             # Create audit log
-            audit = AuditLog(
+            create_audit_log(
                 table_name='invoices',
                 record_id=invoice.id,
                 action='update',
@@ -893,7 +856,6 @@ def update_invoice(invoice_id):
                 changed_by=current_user.email,
                 change_reason=data.get('change_reason', 'Admin invoice update')
             )
-            db.session.add(audit)
 
         db.session.commit()
 
@@ -904,9 +866,7 @@ def update_invoice(invoice_id):
         })
 
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error updating invoice: {str(e)}")
-        return jsonify({'error': 'Failed to update invoice'}), 500
+        return handle_db_error(e, 'Failed to update invoice')
 
 
 @admin_bp.route('/invoices/<invoice_id>', methods=['DELETE'])
@@ -914,9 +874,6 @@ def update_invoice(invoice_id):
 @admin_required
 def delete_invoice(invoice_id):
     """Delete an invoice (soft delete or hard delete based on parameter)"""
-    from app.models.invoice import Invoice
-    from app.models.audit_log import AuditLog
-    from app.utils.auth import get_current_user
     current_user = get_current_user()
 
     try:
@@ -936,7 +893,7 @@ def delete_invoice(invoice_id):
             action = 'delete'
 
         # Create audit log
-        audit = AuditLog(
+        create_audit_log(
             table_name='invoices',
             record_id=invoice.id,
             action=action,
@@ -944,7 +901,6 @@ def delete_invoice(invoice_id):
             changed_by=current_user.email,
             change_reason=request.args.get('reason', 'Admin invoice deletion')
         )
-        db.session.add(audit)
 
         db.session.commit()
 
@@ -953,9 +909,7 @@ def delete_invoice(invoice_id):
         })
 
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error deleting invoice: {str(e)}")
-        return jsonify({'error': 'Failed to delete invoice'}), 500
+        return handle_db_error(e, 'Failed to delete invoice')
 
 
 @admin_bp.route('/invoices/<invoice_id>/replace', methods=['POST'])
@@ -963,10 +917,6 @@ def delete_invoice(invoice_id):
 @admin_required
 def replace_invoice_file(invoice_id):
     """Replace an invoice with a new file upload"""
-    from app.models.invoice import Invoice
-    from app.models.audit_log import AuditLog
-    from app.models.file_storage import FileStorage
-    from app.utils.auth import get_current_user
     current_user = get_current_user()
 
     try:
@@ -1000,7 +950,7 @@ def replace_invoice_file(invoice_id):
         db.session.add(file_storage)
 
         # Create audit log
-        audit = AuditLog(
+        create_audit_log(
             table_name='invoices',
             record_id=invoice.id,
             action='replace_file',
@@ -1009,7 +959,6 @@ def replace_invoice_file(invoice_id):
             changed_by=current_user.email,
             change_reason=request.form.get('reason', 'Admin invoice file replacement')
         )
-        db.session.add(audit)
 
         db.session.commit()
 
@@ -1019,9 +968,7 @@ def replace_invoice_file(invoice_id):
         })
 
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error replacing invoice file: {str(e)}")
-        return jsonify({'error': 'Failed to replace invoice file'}), 500
+        return handle_db_error(e, 'Failed to replace invoice file')
 
 
 # ========================================
@@ -1033,12 +980,8 @@ def replace_invoice_file(invoice_id):
 @admin_required
 def get_audit_log():
     """Get change history with pagination and filtering"""
-    from app.models.audit_log import AuditLog
-
-
     try:
-        page = request.args.get('page', 1, type=int)
-        per_page = min(request.args.get('per_page', 50, type=int), 100)
+        page, per_page = get_pagination_params()
         table_name = request.args.get('table')
         action = request.args.get('action')
         changed_by = request.args.get('changed_by')
@@ -1061,14 +1004,7 @@ def get_audit_log():
 
         return jsonify({
             'audit_logs': [log.to_dict() for log in audit_logs.items],
-            'pagination': {
-                'page': page,
-                'per_page': per_page,
-                'total': audit_logs.total,
-                'pages': audit_logs.pages,
-                'has_next': audit_logs.has_next,
-                'has_prev': audit_logs.has_prev
-            }
+            'pagination': build_pagination_response(audit_logs)
         })
 
     except Exception as e:
@@ -1081,8 +1017,6 @@ def get_audit_log():
 @admin_required
 def get_usage_analytics():
     """Get usage analytics data"""
-    from app.models.usage_analytics import UsageAnalytics
-
     try:
         # Get date range
         days = request.args.get('days', 30, type=int)
