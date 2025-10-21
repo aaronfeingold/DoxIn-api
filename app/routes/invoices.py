@@ -14,6 +14,7 @@ from app.services import async_processor
 from app.services.async_processor import save_invoice_to_database
 from datetime import datetime, timezone
 from decimal import Decimal
+from sqlalchemy.orm import joinedload
 
 invoices_bp = Blueprint('invoices', __name__)
 
@@ -34,19 +35,26 @@ def get_invoices():
         filter_user_id = request.args.get('user_id')  # Legacy: single user
         filter_user_ids = request.args.get('user_ids')  # New: multiple users (comma-separated)
 
-        # Build query with filters
-        query = Invoice.query
+        # Build query with filters - use eager loading for user data
+        query = Invoice.query.options(joinedload(Invoice.uploaded_by_user))
 
         # User filtering logic
         if is_admin():
-            current_app.logger.info(f"[GET-INVOICES] Admin user - view_all={view_all}, filter_user_id={filter_user_id}, filter_user_ids={filter_user_ids}")
+            current_app.logger.info(
+                f"[GET-INVOICES] Admin user - view_all={view_all}, "
+                f"filter_user_id={filter_user_id}, "
+                f"filter_user_ids={filter_user_ids}"
+            )
             # Admin viewing all invoices with optional user filter
             if not view_all and not filter_user_id and not filter_user_ids:
-                # Default: show invoices uploaded by this admin OR with no user (legacy)
-                current_app.logger.info(f"[GET-INVOICES] Applying default admin filter (current user OR NULL)")
+                # Default: show invoices uploaded by this admin OR NULL
+                current_app.logger.info(
+                    "[GET-INVOICES] Applying default admin filter "
+                    "(current user OR NULL)"
+                )
                 query = query.filter(
                     (Invoice.uploaded_by_user_id == g.current_user_id) |
-                    (Invoice.uploaded_by_user_id == None)
+                    (Invoice.uploaded_by_user_id.is_(None))
                 )
             elif filter_user_ids:
                 # Admin filtering by multiple users (new multi-select)
@@ -109,10 +117,28 @@ def get_invoices():
             page=page, per_page=per_page, error_out=False
         )
 
-        current_app.logger.info(f"[GET-INVOICES] Query returned {invoices.total} total invoices, {len(invoices.items)} on this page")
+        current_app.logger.info(
+            f"[GET-INVOICES] Query returned {invoices.total} total "
+            f"invoices, {len(invoices.items)} on this page"
+        )
+
+        # Build invoice list with user data (loaded via eager loading)
+        invoices_with_users = []
+        for invoice in invoices.items:
+            invoice_dict = invoice.to_dict()
+            # Add user info if available (already loaded via joinedload)
+            if invoice.uploaded_by_user:
+                invoice_dict['uploaded_by'] = {
+                    'id': str(invoice.uploaded_by_user.id),
+                    'name': invoice.uploaded_by_user.name,
+                    'email': invoice.uploaded_by_user.email
+                }
+            else:
+                invoice_dict['uploaded_by'] = None
+            invoices_with_users.append(invoice_dict)
 
         return jsonify({
-            'invoices': [invoice.to_dict() for invoice in invoices.items],
+            'invoices': invoices_with_users,
             'pagination': {
                 'page': page,
                 'per_page': per_page,
@@ -137,13 +163,26 @@ def get_invoice(invoice_id):
     """Get single invoice by ID with line items and blob URL"""
     try:
         uuid_id = uuid.UUID(invoice_id)
-        invoice = Invoice.query.filter_by(id=uuid_id).first()
+        # Use eager loading for user data
+        invoice = Invoice.query.options(
+            joinedload(Invoice.uploaded_by_user)
+        ).filter_by(id=uuid_id).first()
 
         if not invoice:
             return jsonify({'error': 'Invoice not found'}), 404
 
         # Get invoice data
         invoice_data = invoice.to_dict()
+
+        # Add user info if available (already loaded via joinedload)
+        if invoice.uploaded_by_user:
+            invoice_data['uploaded_by'] = {
+                'id': str(invoice.uploaded_by_user.id),
+                'name': invoice.uploaded_by_user.name,
+                'email': invoice.uploaded_by_user.email
+            }
+        else:
+            invoice_data['uploaded_by'] = None
 
         # Add line items
         invoice_data['line_items'] = [item.to_dict() for item in invoice.line_items]
@@ -233,8 +272,10 @@ def create_invoice():
                 description=item_data['description'],
                 quantity=item_data['quantity'],
                 unit_price=Decimal(str(item_data['unit_price'])),
-                line_total=Decimal(str(item_data.get('line_total',
-                    item_data['quantity'] * item_data['unit_price'])))
+                line_total=Decimal(str(item_data.get(
+                    'line_total',
+                    item_data['quantity'] * item_data['unit_price']
+                )))
             )
             line_item.save()
 
@@ -402,7 +443,10 @@ def process_invoice_batch():
                 'user_id': str(user_id),
                 'user_email': getattr(g, 'current_user_email', None)
             }
-            current_app.logger.info(f"[PROCESS-BATCH] Processing options for task {task_id}: user_id={processing_options.get('user_id')}")
+            current_app.logger.info(
+                f"[PROCESS-BATCH] Processing options for task {task_id}: "
+                f"user_id={processing_options.get('user_id')}"
+            )
 
             # Start async processing
             async_processor.process_invoice_image_async.delay(
@@ -686,7 +730,10 @@ def update_invoice(invoice_id):
                     if isinstance(value, str):
                         value = datetime.fromisoformat(value.replace('Z', '+00:00')).date()
                 # Convert decimal strings to Decimal
-                elif field in ['subtotal', 'tax_rate', 'tax_amount', 'freight', 'shipping_handling', 'other_charges', 'total_amount'] and value is not None:
+                elif field in [
+                    'subtotal', 'tax_rate', 'tax_amount', 'freight',
+                    'shipping_handling', 'other_charges', 'total_amount'
+                ] and value is not None:
                     value = Decimal(str(value))
                 setattr(invoice, field, value)
 
@@ -705,8 +752,13 @@ def update_invoice(invoice_id):
                     description=item_data['description'],
                     quantity=item_data['quantity'],
                     unit_price=Decimal(str(item_data['unit_price'])),
-                    unit_price_discount=Decimal(str(item_data.get('unit_price_discount', 0))),
-                    line_total=Decimal(str(item_data.get('line_total', item_data['quantity'] * item_data['unit_price']))),
+                    unit_price_discount=Decimal(
+                        str(item_data.get('unit_price_discount', 0))
+                    ),
+                    line_total=Decimal(str(item_data.get(
+                        'line_total',
+                        item_data['quantity'] * item_data['unit_price']
+                    ))),
                     unit_of_measure=item_data.get('unit_of_measure')
                 )
                 db.session.add(line_item)
@@ -743,9 +795,9 @@ def get_invoice_users():
             Invoice, Invoice.uploaded_by_user_id == User.id
         ).distinct().all()
 
-        # Check if there are any unassigned invoices (NULL uploaded_by_user_id)
+        # Check if there are any unassigned invoices
         unassigned_count = db.session.query(Invoice).filter(
-            Invoice.uploaded_by_user_id == None
+            Invoice.uploaded_by_user_id.is_(None)
         ).count()
 
         user_list = [
