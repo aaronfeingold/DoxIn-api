@@ -4,6 +4,7 @@ Shipping method model
 from sqlalchemy import Column, String, Integer, DECIMAL
 from .base import BaseModel
 
+
 class ShipMethod(BaseModel):
     """Shipping methods"""
     __tablename__ = 'ship_methods'
