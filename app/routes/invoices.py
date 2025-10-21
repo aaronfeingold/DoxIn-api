@@ -9,6 +9,7 @@ from app.models import Invoice, InvoiceLineItem, FileStorage, ProcessingJob, Use
 from app.utils.auth import require_auth, user_or_admin_required, admin_required, is_admin
 from app.utils.audit import create_audit_log
 from app.utils.response import generate_task_id, iso_timestamp, validate_uuid
+from app.utils.routes_helpers import get_pagination_params, build_pagination_response, handle_db_error
 from app.services.llm_service import get_llm_service
 from app.services import async_processor
 from app.services.async_processor import save_invoice_to_database
@@ -27,8 +28,10 @@ invoices_bp = Blueprint('invoices', __name__)
 def get_invoices():
     """Get all invoices with pagination and filtering"""
     try:
-        page = request.args.get('page', 1, type=int)
-        per_page = min(request.args.get('per_page', 20, type=int), 100)
+        page, per_page = get_pagination_params()
+        # Override default per_page for invoices (20 instead of 50)
+        if request.args.get('per_page') is None:
+            per_page = min(20, 100)
 
         # Admin can view all or filter by specific user(s)
         view_all = request.args.get('view_all', 'false').lower() == 'true'
@@ -139,14 +142,7 @@ def get_invoices():
 
         return jsonify({
             'invoices': invoices_with_users,
-            'pagination': {
-                'page': page,
-                'per_page': per_page,
-                'total': invoices.total,
-                'pages': invoices.pages,
-                'has_next': invoices.has_next,
-                'has_prev': invoices.has_prev
-            },
+            'pagination': build_pagination_response(invoices),
             'is_admin': is_admin(),
             'current_user_id': str(g.current_user_id)
         })
@@ -285,9 +281,7 @@ def create_invoice():
         }), 201
 
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Failed to create invoice: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return handle_db_error(e, str(e))
 
 
 # === Processing Operations ===
@@ -465,9 +459,7 @@ def process_invoice_batch():
         }), 202
 
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Batch processing failed: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return handle_db_error(e, 'Batch processing failed')
 
 
 @invoices_bp.route('/generate', methods=['POST'])
@@ -666,9 +658,7 @@ def approve_and_save_invoice(task_id):
                 raise
 
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Failed to approve invoice: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return handle_db_error(e, 'Failed to approve invoice')
 
 
 @invoices_bp.route('/supported-types', methods=['GET'])
@@ -776,12 +766,9 @@ def update_invoice(invoice_id):
         })
 
     except ValueError as e:
-        db.session.rollback()
-        return jsonify({'error': f'Invalid data format: {str(e)}'}), 400
+        return handle_db_error(e, f'Invalid data format: {str(e)}', 400)
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error updating invoice: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return handle_db_error(e, 'Error updating invoice')
 
 
 @invoices_bp.route('/users', methods=['GET'])
