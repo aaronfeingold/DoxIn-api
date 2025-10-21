@@ -9,6 +9,7 @@ from app.utils.routes_helpers import (
     build_pagination_response,
     handle_db_error
 )
+from app.utils.audit import create_audit_log
 from app import db
 from app.models import ProcessingJob
 from app.models.file_storage import FileStorage
@@ -25,23 +26,6 @@ import secrets
 import string
 
 admin_bp = Blueprint('admin', __name__)
-
-
-def create_audit_log(table_name, record_id, action, changed_by, old_values=None,
-                     new_values=None, changed_fields=None, change_reason=None):
-    """Create and add an audit log entry to the session"""
-    audit = AuditLog(
-        table_name=table_name,
-        record_id=record_id,
-        action=action,
-        old_values=old_values,
-        new_values=new_values,
-        changed_fields=changed_fields,
-        changed_by=changed_by,
-        change_reason=change_reason
-    )
-    db.session.add(audit)
-    return audit
 
 
 @admin_bp.route('/health', methods=['GET'])
@@ -801,8 +785,8 @@ def create_invoice():
             record_id=invoice.id,
             action='create',
             new_values=invoice.to_dict(),
-            changed_by=current_user.email,
-            change_reason=data.get('change_reason', 'Admin invoice creation')
+            user_email=current_user.email,
+            reason=data.get('change_reason', 'Admin invoice creation')
         )
 
         db.session.commit()
@@ -852,9 +836,8 @@ def update_invoice(invoice_id):
                 action='update',
                 old_values=old_values,
                 new_values=invoice.to_dict(),
-                changed_fields=changed_fields,
-                changed_by=current_user.email,
-                change_reason=data.get('change_reason', 'Admin invoice update')
+                user_email=current_user.email,
+                reason=data.get('change_reason', 'Admin invoice update')
             )
 
         db.session.commit()
@@ -898,8 +881,8 @@ def delete_invoice(invoice_id):
             record_id=invoice.id,
             action=action,
             old_values=old_values,
-            changed_by=current_user.email,
-            change_reason=request.args.get('reason', 'Admin invoice deletion')
+            user_email=current_user.email,
+            reason=request.args.get('reason', 'Admin invoice deletion')
         )
 
         db.session.commit()
@@ -956,8 +939,8 @@ def replace_invoice_file(invoice_id):
             action='replace_file',
             old_values={'original_filename': old_filename},
             new_values={'original_filename': file.filename},
-            changed_by=current_user.email,
-            change_reason=request.form.get('reason', 'Admin invoice file replacement')
+            user_email=current_user.email,
+            reason=request.form.get('reason', 'Admin invoice file replacement')
         )
 
         db.session.commit()
