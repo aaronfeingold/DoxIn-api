@@ -6,6 +6,7 @@ from sqlalchemy import Column, String, Date, Text, ForeignKey, DECIMAL
 from sqlalchemy.orm import relationship
 from .base import BaseModel
 
+
 class Payment(BaseModel):
     """Payment tracking model"""
     __tablename__ = 'payments'
