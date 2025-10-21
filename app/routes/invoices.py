@@ -70,8 +70,8 @@ def get_invoices():
 
                         # Add NULL condition if requested
                         if include_null:
-                            current_app.logger.info(f"[GET-INVOICES] Including NULL/unassigned invoices")
-                            filter_conditions.append(Invoice.uploaded_by_user_id == None)
+                            current_app.logger.info("[GET-INVOICES] Including NULL/unassigned invoices")
+                            filter_conditions.append(Invoice.uploaded_by_user_id.is_(None))
 
                         # Apply combined filter (OR condition)
                         if filter_conditions:
