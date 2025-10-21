@@ -5,7 +5,6 @@ import json
 import redis
 import os
 from typing import Dict, Any, Optional
-from flask import current_app
 
 
 class RedisEventBridge:
