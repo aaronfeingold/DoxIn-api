@@ -7,7 +7,6 @@ from app import db
 from app.models import ProcessingJob
 from app.models.file_storage import FileStorage
 from sqlalchemy import text, func
-from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime, timedelta
 import redis
 import os
@@ -27,6 +26,8 @@ def get_redis_connection():
 
 
 @admin_bp.route('/health', methods=['GET'])
+@require_auth
+@admin_required
 def admin_health_check():
     """Comprehensive admin health check for all services"""
     health_status = {
@@ -154,6 +155,8 @@ def admin_health_check():
 
 
 @admin_bp.route('/jobs', methods=['GET'])
+@require_auth
+@admin_required
 def get_processing_jobs():
     """Get all processing jobs with status and metrics"""
     try:
@@ -209,6 +212,8 @@ def get_processing_jobs():
 
 
 @admin_bp.route('/jobs/<job_id>', methods=['GET'])
+@require_auth
+@admin_required
 def get_processing_job_details(job_id):
     """Get detailed information about a specific processing job"""
     try:
@@ -244,6 +249,8 @@ def get_processing_job_details(job_id):
 
 
 @admin_bp.route('/metrics', methods=['GET'])
+@require_auth
+@admin_required
 def get_system_metrics():
     """Get system performance metrics"""
     try:
@@ -348,6 +355,8 @@ def get_system_metrics():
 
 
 @admin_bp.route('/containers', methods=['GET'])
+@require_auth
+@admin_required
 def get_container_status():
     """Get Docker container status (if running in Docker)"""
     try:
@@ -398,6 +407,8 @@ def get_container_status():
 
 
 @admin_bp.route('/metrics/refresh', methods=['POST'])
+@require_auth
+@admin_required
 def refresh_metrics():
     """Manually refresh all Prometheus metrics"""
     try:
@@ -447,6 +458,8 @@ def refresh_metrics():
         return jsonify({'error': 'Failed to refresh metrics'}), 500
 
 @admin_bp.route('/alerts/webhook', methods=['POST'])
+@require_auth
+@admin_required
 def handle_alert_webhook():
     """Handle AlertManager webhook notifications"""
     try:
