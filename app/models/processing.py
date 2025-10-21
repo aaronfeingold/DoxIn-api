@@ -6,6 +6,7 @@ from sqlalchemy import Column, String, Integer, Text, ForeignKey, DateTime, func
 from sqlalchemy.orm import relationship
 from .base import BaseModel
 
+
 class DocumentProcessingLog(BaseModel):
     """Document processing log for tracking LLM operations"""
     __tablename__ = 'document_processing_log'
