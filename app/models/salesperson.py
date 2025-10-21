@@ -3,7 +3,6 @@ Salesperson model
 """
 from sqlalchemy import Column, String, Integer, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
-from pgvector.sqlalchemy import Vector
 from .base import BaseModel
 
 
@@ -19,9 +18,6 @@ class Salesperson(BaseModel):
     department = Column(String(100))
     territory_id = Column(Integer, ForeignKey('sales_territories.territory_id'))
     is_active = Column(Boolean, default=True)
-
-    # Vector embedding
-    name_embedding = Column(Vector(1536))
 
     # Relationships
     territory = relationship("SalesTerritory", back_populates="salespersons")
