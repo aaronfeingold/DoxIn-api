@@ -2,13 +2,16 @@
 Better Auth Session Validation for Flask API
 
 This module validates sessions created by Better Auth (Next.js).
+Sessions are stored in Redis for stateless, horizontally scalable architecture.
 Python API acts as a read-only validator - it does not create sessions or manage auth.
 """
 from datetime import datetime
 from functools import wraps
 from flask import request, jsonify, current_app, g
 from app import db
-from app.models.user import User, Session
+from app.models.user import User
+from app.utils.redis_session import get_session_validator
+from urllib.parse import unquote
 
 
 class AuthError(Exception):
@@ -52,37 +55,41 @@ def get_session_token():
 
 def validate_better_auth_session(session_token, track_login=False):
     """
-    Validate Better Auth session token
-    Simple database lookup - no JWT decoding or token hashing
+    Validate Better Auth session token from Redis
 
     Args:
         session_token: The session token to validate
-        track_login: If True, update last_login and create audit log entry
+        track_login: If True, update last_login
     """
     try:
-        from urllib.parse import unquote
 
         # URL decode the session token (cookies may be URL encoded)
         decoded_token = unquote(session_token)
+        current_app.logger.info(f"[Flask Auth] Raw session token: {session_token[:30]}...")
+        current_app.logger.info(f"[Flask Auth] Decoded token: {decoded_token[:30]}...")
 
         # Better Auth tokens are formatted as: {session_id}.{signature}
         # We only need the session_id part (before the dot)
         token_parts = decoded_token.split('.')
         session_id = token_parts[0] if token_parts else decoded_token
+        current_app.logger.info(f"[Flask Auth] Extracted session_id: {session_id[:30]}...")
+        current_app.logger.info(f"[Flask Auth] Token had {len(token_parts)} parts")
 
-        # Look up session by token field (Better Auth stores the session ID here)
-        session = Session.query.filter_by(token=session_id).first()
+        # Look up session in Redis
+        session_validator = get_session_validator()
+        session_data = session_validator.get_session(session_id)
 
-        if not session:
-            current_app.logger.error(f"Session not found for token: {session_id[:30]}...")
+        if not session_data:
+            current_app.logger.error(f"Session not found in Redis: {session_id[:30]}...")
             raise AuthError('Invalid session')
 
-        # Check if session is expired
-        if not session.is_valid():
-            raise AuthError('Session expired')
+        # Extract user ID from session
+        user_id = session_data.get('userId')
+        if not user_id:
+            raise AuthError('Invalid session data')
 
-        # Load user
-        user = User.query.get(session.user_id)
+        # Load user from database
+        user = User.query.get(user_id)
 
         if not user:
             raise AuthError('User not found')
@@ -114,10 +121,10 @@ def validate_better_auth_session(session_token, track_login=False):
                 db.session.rollback()
 
         return {
-            'user_id': user.id,
+            'user_id': str(user.id),
             'email': user.email,
             'role': user.role,
-            'session_id': session.id,
+            'session_id': session_id,
             'user': user
         }
 
@@ -208,30 +215,3 @@ def get_current_user_id():
 def is_admin():
     """Check if current user has admin role"""
     return getattr(g, 'current_user_role', None) == 'admin'
-
-
-# =============================================================================
-# Session Management Functions (Better Auth Only - Python Does Not Create Sessions)
-# =============================================================================
-# The following functions are NOT USED in Better Auth mode.
-# Better Auth (Next.js) handles all session creation, refresh, and revocation.
-# Python API only validates existing sessions created by Better Auth.
-#
-# If you need to create sessions for Python-only endpoints, use Better Auth
-# API routes instead.
-# =============================================================================
-
-def cleanup_expired_sessions():
-    """
-    Clean up expired Better Auth sessions (optional maintenance task)
-    Can be run as a scheduled job for database cleanup
-    """
-    expired_sessions = Session.query.filter(
-        Session.expires_at < datetime.utcnow()
-    ).all()
-
-    for session in expired_sessions:
-        db.session.delete(session)
-
-    db.session.commit()
-    return len(expired_sessions)
