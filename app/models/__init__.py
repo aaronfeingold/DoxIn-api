@@ -20,6 +20,7 @@ from .audit_log import AuditLog
 from .report import Report
 from .usage_analytics import UsageAnalytics
 from .access_code import AccessCode
+from .access_request import AccessRequest
 
 __all__ = [
     'BaseModel',
@@ -46,5 +47,6 @@ __all__ = [
     'AuditLog',
     'Report',
     'UsageAnalytics',
-    'AccessCode'
+    'AccessCode',
+    'AccessRequest'
 ]
