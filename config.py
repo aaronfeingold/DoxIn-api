@@ -10,6 +10,11 @@ class Config:
     """Base configuration"""
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
 
+    # JWT Configuration
+    JWT_SECRET = os.environ.get('JWT_SECRET') or 'dev-jwt-secret-change-in-production'
+    JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
+    JWT_EXP_MINUTES = int(os.environ.get('JWT_EXP_MINUTES', 15))
+
     # Database Configuration
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
         'postgresql://case-study:password@localhost:5433/case-study'
