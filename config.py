@@ -94,6 +94,7 @@ class Config:
     METRICS_ENABLED = os.environ.get('METRICS_ENABLED', 'true').lower() == 'true'
     PROMETHEUS_METRICS_PATH = os.environ.get('PROMETHEUS_METRICS_PATH', '/metrics')
 
+
 class DevelopmentConfig(Config):
     """Development configuration"""
     DEBUG = True
