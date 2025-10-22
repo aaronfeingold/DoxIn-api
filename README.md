@@ -83,14 +83,9 @@ app/
 ├── models/           # Database models
 ├── services/         # Business logic
 └── utils/           # Utility functions
-
-tests/               # Test files
-├── test_invoice_routes.py
-├── test_llm_integration.py
-└── test_refactored_services.py
 ```
 
-## API Documentation
+## API V1 Documentation
 
 For detailed API endpoint documentation, see:
 - `/backend/docs/api-endpoints.md` - Complete API reference
