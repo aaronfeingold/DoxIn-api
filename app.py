@@ -11,8 +11,10 @@ sys.path.insert(0, str(backend_dir))
 
 from app import create_app, db, socketio
 from app.models import *  # Import all models for table creation
+from config import Config
 
 app = create_app()
+
 
 @app.cli.command("init-db")
 def init_db_command():
@@ -41,6 +43,7 @@ def init_db_command():
         print(f"Error initializing database: {e}")
         sys.exit(1)
 
+
 @app.cli.command("load-sample-data")
 def load_sample_data_command():
     """Load sample data into the database"""
@@ -50,6 +53,7 @@ def load_sample_data_command():
         print("Sample data loaded successfully!")
     except Exception as e:
         print(f"Error loading sample data: {e}")
+
 
 @app.cli.command("load-excel-data")
 def load_excel_data_command():
@@ -62,6 +66,7 @@ def load_excel_data_command():
     print("  --admin EMAIL    Admin user email for audit logging")
     print("  --dry-run        Show what would be imported without changes")
     print("  --help           Show full help")
+
 
 def load_sample_data():
     """Load some sample data for testing"""
@@ -182,10 +187,10 @@ def load_sample_data():
 
     db.session.commit()
 
+
 if __name__ == '__main__':
-    # Check for environment variables
-    if not os.getenv('OPENAI_API_KEY') and not os.getenv('ANTHROPIC_API_KEY'):
-        print("Warning: No AI API keys found. Set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variables.")
+    # Validate AI API keys
+    Config.validate_ai_api_keys()
 
     # Use socketio.run instead of app.run for WebSocket support
     socketio.run(

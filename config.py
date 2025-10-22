@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class Config:
     """Base configuration"""
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
@@ -94,6 +95,24 @@ class Config:
     METRICS_ENABLED = os.environ.get('METRICS_ENABLED', 'true').lower() == 'true'
     PROMETHEUS_METRICS_PATH = os.environ.get('PROMETHEUS_METRICS_PATH', '/metrics')
 
+    @classmethod
+    def validate_ai_api_keys(cls):
+        """
+        Validate that at least one AI API key is configured.
+        Prints a warning if no keys are found.
+
+        Returns:
+            bool: True if at least one API key is configured, False otherwise
+        """
+        has_openai = bool(os.getenv('OPENAI_API_KEY'))
+        has_anthropic = bool(os.getenv('ANTHROPIC_API_KEY'))
+
+        if not has_openai and not has_anthropic:
+            print("Warning: No AI API keys found. Set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variables.")
+            return False
+
+        return True
+
 
 class DevelopmentConfig(Config):
     """Development configuration"""
@@ -106,8 +125,10 @@ class DevelopmentConfig(Config):
         options['echo'] = True  # Enable SQL logging in development
         return options
 
+
 # Set engine options as class attribute
 DevelopmentConfig.SQLALCHEMY_ENGINE_OPTIONS = DevelopmentConfig.get_engine_options()
+
 
 class ProductionConfig(Config):
     """Production configuration"""
@@ -135,13 +156,16 @@ class ProductionConfig(Config):
 
         return options
 
+
 # Set engine options as class attribute
 ProductionConfig.SQLALCHEMY_ENGINE_OPTIONS = ProductionConfig.get_engine_options()
+
 
 class TestingConfig(Config):
     """Testing configuration"""
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'postgresql://postgres:password@localhost:5432/case_study_invoices_test'
+    SQLALCHEMY_DATABASE_URI = 'postgresql://postgres:password@localhost:5432/case_study_test'
+
 
 # Configuration mapping
 config = {
