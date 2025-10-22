@@ -94,7 +94,7 @@ class Config:
     CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', REDIS_URL)
 
     # Application Metadata
-    VERSION = os.environ.get('APP_VERSION', '1.0.0')
+    SEM_VER = os.environ.get('SEM_VER', '0.0.0')
     ENVIRONMENT = os.environ.get('ENVIRONMENT', 'development')
 
     # Monitoring Configuration
