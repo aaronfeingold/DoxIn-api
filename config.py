@@ -81,6 +81,12 @@ class Config:
 
     # CORS Configuration
     FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+    # Parse ALLOWED_ORIGINS as comma-separated list (used in development mode)
+    ALLOWED_ORIGINS = [
+        origin.strip()
+        for origin in os.environ.get('ALLOWED_ORIGINS', '').split(',')
+        if origin.strip()
+    ]
 
     # Background Processing (Optional)
     REDIS_URL = os.environ.get('REDIS_URL')

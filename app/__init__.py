@@ -8,7 +8,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO
 
 # API Configuration
-API_VERSION = 'v1'
+API_VERSION = 'v0'
 
 # Initialize extensions
 db = SQLAlchemy()
@@ -32,43 +32,24 @@ def create_app(config_name=None):
     from app.services.metrics_service import metrics_service
     metrics_service.init_app(app)
 
-    # Initialize SocketIO with CORS
-    # In development, allow multiple localhost origins for flexibility with proxies
-    cors_origins = app.config['FRONTEND_URL']
+    allowed_origins = [app.config['FRONTEND_URL']]
+    # Build CORS allowed origins list based on environment
     if app.config.get('DEBUG', False) or app.config.get('ENV') == 'development':
-        # Allow various localhost ports (actual server + proxies) + network access
-        cors_origins = [
-            'http://localhost:3000',
-            'http://localhost:65228',
-            'http://127.0.0.1:3000',
-            'http://127.0.0.1:65228',
-            'http://10.0.0.27:3000',
-            'http://10.0.0.27:65228',
-        ]
+        # Development: use FRONTEND_URL + additional origins from ALLOWED_ORIGINS env var
+        if app.config.get('ALLOWED_ORIGINS'):
+            allowed_origins.extend(app.config['ALLOWED_ORIGINS'])
 
+    # Initialize SocketIO with CORS
     socketio.init_app(
         app,
-        cors_allowed_origins=cors_origins,
+        cors_allowed_origins=allowed_origins,
         async_mode='threading',
         logger=True,
         engineio_logger=True,
         cors_credentials=True
     )
 
-    # Configure CORS for regular routes
-    if app.config.get('DEBUG', False):
-        # In development, allow common localhost ports + network access
-        allowed_origins = [
-            'http://localhost:3000',
-            'http://localhost:65228',
-            'http://127.0.0.1:3000',
-            'http://127.0.0.1:65228',
-            'http://10.0.0.27:3000',
-            'http://10.0.0.27:65228',
-        ]
-    else:
-        allowed_origins = [app.config['FRONTEND_URL']]
-
+    # Configure CORS for regular routes (reuse same origins list)
     CORS(app, origins=allowed_origins, supports_credentials=True)
 
     # Create upload directory
@@ -90,7 +71,7 @@ def create_app(config_name=None):
     from app.routes.dashboard import dashboard_bp
     from app.routes.auth import auth_bp
 
-    # API v1 routes
+    # API Versioned routes
     api_prefix = f'/api/{API_VERSION}'
     app.register_blueprint(health_bp, url_prefix=f'{api_prefix}/health')
     app.register_blueprint(admin_bp, url_prefix=f'{api_prefix}/admin')
