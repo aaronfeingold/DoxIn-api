@@ -1,7 +1,7 @@
 """
 Health check routes
 """
-from flask import Blueprint, jsonify, Response
+from flask import Blueprint, jsonify, Response, current_app
 from app import db
 from app.utils.routes_helpers import get_redis_connection
 from sqlalchemy import text
@@ -16,7 +16,7 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'service': 'case-study-invoice-extraction',
-        'version': '1.0.0'
+        'version': current_app.config.get('SEM_VER', '0.0.0'),
     })
 
 
@@ -45,6 +45,9 @@ def detailed_health():
     """Detailed health check with component status"""
     health_status = {
         'status': 'healthy',
+        'service': 'case-study-invoice-extraction',
+        'version': current_app.config.get('SEM_VER', '0.0.0'),
+        'environment': current_app.config.get('ENVIRONMENT', 'development'),
         'components': {}
     }
 
