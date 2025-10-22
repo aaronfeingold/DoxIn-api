@@ -1,5 +1,5 @@
 # Multi-stage build for Flask API
-FROM python:3.11-slim as base
+FROM python:3.11-slim AS base
 
 # Set working directory
 WORKDIR /app
