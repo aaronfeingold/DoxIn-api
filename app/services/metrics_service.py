@@ -92,7 +92,7 @@ class MetricsService:
 
         # Set application info
         APP_INFO.info({
-            'version': app.config.get('VERSION', '1.0.0'),
+            'version': app.config.get('SEM_VER', '0.0.0'),
             'environment': app.config.get('ENVIRONMENT', 'development')
         })
 
