@@ -14,6 +14,7 @@ API_VERSION = 'v1'
 db = SQLAlchemy()
 socketio = SocketIO()
 
+
 def create_app(config_name=None):
     """Create Flask application with configuration"""
     app = Flask(__name__)
