@@ -8,6 +8,7 @@ from sqlalchemy import Column, DateTime, func
 from flask import g, has_request_context
 from app import db
 
+
 class BaseModel(db.Model):
     """Base model class with common fields and methods (Better Auth compatible)"""
     __abstract__ = True
