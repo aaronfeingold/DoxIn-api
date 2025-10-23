@@ -79,6 +79,29 @@ def track_login():
         return jsonify({'error': 'Failed to track login'}), 500
 
 
+@auth_bp.route('/session-info', methods=['GET'])
+@require_auth
+def get_session_info():
+    """Get current session information"""
+    try:
+        user = User.query.get(g.current_user_id)
+
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        return jsonify({
+            'user_id': str(user.id),
+            'email': user.email,
+            'role': user.role,
+            'last_login': user.last_login.isoformat() if user.last_login else None,
+            'is_active': user.is_active
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error fetching session info: {str(e)}")
+        return jsonify({'error': 'Failed to fetch session info'}), 500
+
+
 @auth_bp.route('/jwt-token', methods=['POST'])
 @require_auth
 def get_jwt_token():
