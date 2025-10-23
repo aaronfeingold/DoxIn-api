@@ -33,6 +33,7 @@ def create_app(config_name=None):
     metrics_service.init_app(app)
 
     allowed_origins = [app.config['FRONTEND_URL']]
+
     # Build CORS allowed origins list based on environment
     if app.config.get('DEBUG', False) or app.config.get('ENV') == 'development':
         # Development: use FRONTEND_URL + additional origins from ALLOWED_ORIGINS env var
