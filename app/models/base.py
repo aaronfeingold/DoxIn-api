@@ -5,7 +5,6 @@ import uuid
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Column, DateTime, func
-from flask import g, has_request_context
 from app import db
 
 
@@ -69,48 +68,25 @@ class BaseModel(db.Model):
         db.session.commit()
 
     def _create_audit_log(self, action, old_values, new_values, user_email=None, reason=None):
-        """Create an audit log entry"""
+        """Create an audit log entry using the audit utility"""
         # Skip audit logging for AuditLog model itself to avoid recursion
         if self.__class__.__name__ == 'AuditLog':
             return
 
-        try:
-            # Import here to avoid circular imports
-            from app.models.audit_log import AuditLog
+        # Import and use the audit utility function
+        from app.utils.audit import create_audit_log
 
-            # Get user email from request context or parameter
-            if not user_email and has_request_context():
-                user_email = getattr(g, 'current_user_email', None)
-
-            # Calculate changed fields for updates
-            changed_fields = []
-            if action == 'UPDATE' and old_values and new_values:
-                changed_fields = [
-                    field for field in new_values.keys()
-                    if old_values.get(field) != new_values.get(field)
-                ]
-
-            # Create audit log entry
-            audit_entry = AuditLog(
-                table_name=self.__tablename__,
-                record_id=self.id,
-                action=action,
-                old_values=old_values,
-                new_values=new_values,
-                changed_fields=changed_fields,
-                changed_by=user_email or 'system',
-                change_reason=reason
-            )
-
-            # Add to session but don't commit (let the caller handle commit)
-            db.session.add(audit_entry)
-
-        except Exception as e:
-            # Log error but don't fail the main operation
-            if has_request_context():
-                from flask import current_app
-                current_app.logger.error(f"Failed to create audit log: {e}")
-            print(f"Audit logging error: {e}")  # Fallback logging
+        create_audit_log(
+            table_name=self.__tablename__,
+            record_id=self.id,
+            action=action,
+            old_values=old_values,
+            new_values=new_values,
+            user_email=user_email,
+            changed_fields=[],
+            changed_by=user_email or 'system',
+            change_reason=reason
+        )
 
     @classmethod
     def find_by_id(cls, id):
